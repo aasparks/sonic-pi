@@ -2,19 +2,17 @@
 
 (loop 4
       (block
-       (fx "reverb"
-           (block
-            (sample "drum_heavy_kick")
-            (psleep 0.5)
-            (sample "drum_cymbal_soft")
-            (psleep 0.5)))))
+       (sample 'bd_tek)
+       (psleep 0.25)))
+
 (loop 8
       (block
-       (sample "bd_ada")
-       (psleep 0.25)
-       (sample "bd_haus")
-       (psleep 0.25)))
-(loop 16
-      (block
-       (sample (choose "bd_ada" "bd_tek"))
-       (psleep 0.25)))
+       (sample 'bd_ada)
+       (sleep 0.25)
+       (note 'beep 60)
+       (sleep 0.25)))
+
+(loop/infinite
+ (block
+  (sample 'elec_plip)
+  (psleep 0.25)))

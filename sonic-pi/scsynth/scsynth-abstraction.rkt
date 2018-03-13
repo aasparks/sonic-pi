@@ -12,26 +12,32 @@
 
 (require "scsynth-communication.rkt"
          "../allocator.rkt"
+         "../data-structures/common.rkt"
          (for-syntax syntax/parse)
          osc
          racket/runtime-path
+         racket/async-channel
          )
 
 (provide (contract-out
           [startup (-> ctxt?)]
           [start-job (-> ctxt? job-ctxt?)]
-          [play-synth (-> job-ctxt? bytes? inexact-real? (listof (listof (or/c bytes? real?))) void?)]
+          [play-synth (-> job-ctxt? bytes? inexact-real? (listof Param?) void?)]
           [end-job (-> job-ctxt? void?)]
           [synchronize/ctxt (-> ctxt? void?)])
          ctxt-comm
-         job-ctxt-ctxt)
+         job-ctxt-ctxt
+         load-fx
+         wait-for-nodes
+         shutdown-scsynth)
 
 (define-runtime-path here ".")
-(define SYNTHDEF-PATH (build-path here "synthdefs"))
+(define SYNTHDEF-PATH (build-path here "synthdefs" "compiled"))
 (unless (directory-exists? SYNTHDEF-PATH)
   (error 'synthdef-path
          "expected synthdefs at path: ~v\n" SYNTHDEF-PATH))
 (define-logger sonic-pi)
+;(define OUTPUT-LOG (open-output-file "log.txt" #:exists 'replace))
 
 ;; this represents the context of a running sonic pi graph, containing
 ;; the 'comm' structure, the group of the mixers and the group of the
@@ -40,6 +46,9 @@
 ;; this represents the context of a single job, containing a ctxt,
 ;; the job-specific mixer, and the job-specific synth-group
 (define-struct job-ctxt (ctxt mixer synth-group) #:transparent)
+
+;; store all allocated node id's
+(define all-nodes (make-hash))
 
 ;; represents a synth or group ID
 (define ID? exact-nonnegative-integer?)
@@ -88,11 +97,13 @@
   ;; guaranteeing that things get freed; specifically,
   ;; things in these groups might not be freed by the g_freeAll
   ;; above. Curiously, scsynth's deepFree doesn't free nested groups.
-  (define mixer-group (new-group the-comm 'head ROOT-GROUP))
-  (define fx-group (new-group the-comm 'before mixer-group))
-  (define fx-group-group (new-group the-comm 'tail fx-group))
-  (define synth-group-group (new-group the-comm 'before fx-group))
+  (define mixer-group     (new-group the-comm 'head ROOT-GROUP))
+  (define fx-group        (new-group the-comm 'before mixer-group))
+  (define synth-group     (new-group the-comm 'before fx-group))
   (define recording-group (new-group the-comm 'after mixer-group))
+   (send-command the-comm #"/d_loadDir" (string->bytes/utf-8
+                                        (path->string SYNTHDEF-PATH)))
+  (synchronize the-comm)
   (define mixer (new-synth the-comm #"sonic-pi-mixer" 'head mixer-group
                            #"in_bus" 10))
   (send-command/elt the-comm `#s(osc-message #"/n_set"
@@ -100,7 +111,7 @@
   (send-command/elt the-comm `#s(osc-message #"/n_set"
                                              (,mixer #"force_mono" 0.0)))
   (synchronize the-comm)
-  (ctxt the-comm mixer-group synth-group-group fx-group-group))
+  (ctxt the-comm mixer-group synth-group fx-group))
 
 ;; read lines from input port, log to debug. Stop when we get #<eof>.
 (define (start-logging-thread server-stdout)
@@ -109,7 +120,9 @@
      (let loop ()
        (define next-line (read-line server-stdout))
        (cond [(eof-object? next-line) 'all-done]
-             [else (log-sonic-pi-debug (string-append "[scsynth-stdout] " next-line))
+             [else
+              ;(write next-line OUTPUT-LOG)
+              (log-sonic-pi-debug (string-append "[scsynth-stdout] " next-line))
                    (loop)])))))
 
 ;; given the comm, a placement command, and a node ID,
@@ -164,16 +177,32 @@
 
 ;; play a synth (note or sample) at the given time
 (define (play-synth job-ctxt name time params)
+  (define new-node-id (fresh-node-id!))
+  (hash-set! all-nodes new-node-id #t)
   (apply
    send-bundled-message
    (ctxt-comm (job-ctxt-ctxt job-ctxt))
    time
    #"/s_new"
    name
-   (fresh-node-id!)
-   (placement-command->number 'head)
+   new-node-id
+   (placement-command->number 'tail)
    (job-ctxt-synth-group job-ctxt)
-   (apply append params)))
+   (apply append (map param->osc params))))
+
+;; load an fx
+(define (load-fx job-ctxt name time params)
+  (define new-node-id (fresh-node-id!))
+  (apply
+   send-bundled-message
+   (ctxt-comm (job-ctxt-ctxt job-ctxt))
+   time
+   #"/s_new"
+   name
+   new-node-id
+   (placement-command->number 'head)
+   (ctxt-fx-group (job-ctxt-ctxt job-ctxt))
+   (apply append (map param->osc params))))
 
 ;; start a job. I don't even know what a job is!
 (define (start-job the-ctxt)
@@ -187,15 +216,13 @@
                #"amp"
                1
                #"amp_slide"
-               0.10000000149011612
+               0.1
                #"amp_slide_shape"
-               5
+               1
                #"amp_slide_curve"
                0
                #"in_bus"
                12
-               #"amp"
-               0.30000001192092896
                #"out_bus"
                10))
   (job-ctxt the-ctxt job-mixer job-synth-group))
@@ -212,22 +239,34 @@
   (sleep 1)
   (send-command comm #"/n_free" job-mixer)
   (send-command comm #"/n_free" job-synth-group)
+  (sleep 1)
   ;; for now this is needed for more than one run to happen
   ;; when there are multiple jobs going on this will need to change.
   ;; will there be multiple jobs?
   (shutdown-scsynth))
 
+;; loops until all nodes have received the
+;; n\end message
+(define (wait-for-nodes job-ctxt)
+  (if (all-nodes-ended? (comm-incoming (ctxt-comm (job-ctxt-ctxt job-ctxt))))
+      (void)
+      (wait-for-nodes job-ctxt)))
+
+;; determines if every allocated node has ended
+(define (all-nodes-ended? incoming)
+  (empty? (remv* (get-ended-nodes) (hash-keys all-nodes))))
 
 
 (module+ main
-  (require "../note.rkt")
+  (require "../data-structures/note.rkt")
   (define ctxt (startup))
   (define job-ctxt (start-job ctxt))
-  (define n (note "beep" 100))
+  (define n (note 'zawa 60))
   
   (play-synth job-ctxt
-              (note-name n)
-              (+ 500 (current-inexact-milliseconds))
+              (Score-name n)
+              (+ 1000 (current-inexact-milliseconds))
               (note-params n))
-  (sleep 5)
+  (sleep 4)
+  
   (end-job job-ctxt))

@@ -16,6 +16,7 @@
 
 (define-runtime-path here ".")
 (define SCSYNTH-PATH-MAC (build-path here "scsynth"))
+(define SCSYNTH-PATH-WIN (build-path here "native" "scsynth.exe"))
 
 ;; honestly, all of this machinery is a bit silly.
 (define rng (vector->pseudo-random-generator
@@ -77,8 +78,8 @@
        (let loop ()
          (define next-line (read-line from-port))
          (set! lines-of-output (cons next-line lines-of-output))
-         ;(display next-line)
-         ;(newline)
+         
+         (printf "~v\n" next-line)
          (cond [(eof-object? next-line) 'process-done]
                [(equal? (string-trim next-line) SUCCESSFUL-START-LINE)
                 (channel-put startup-status 'server-up)]
@@ -104,7 +105,7 @@
         (try-startup (add1 udp-port-idx))]
        [other
         (error 'server-startup
-               "server process halted with exit code 1. Not sure why. next to Last line: ~v\n"
+               "server process halted with exit code 1. Try running (shutdown-scsynth). next to Last line: ~v\n"
                (cadr lines-of-output))
         ])]
     [(list 'exit-code n)
@@ -124,36 +125,31 @@
 ;; start scsynth as required by the current operating system
 (define (os-specific-startup udp-port)
   (match (system-type)
-    ['macosx (process* SCSYNTH-PATH-MAC
-                       "-a" "1024"
-                       "-m" "131071"
-                       "-D" "0"
-                       "-u" (number->string udp-port))]
-    ['unix (process (string-append "scsynth -a 1024 -m 131071 -D 0 -R 0 -l 1 -i 16 -o 16 -u "
-                                   (number->string udp-port)))]
+    ['macosx
+     (define args (string-append " -a 1024 -m 131071 -D 0"
+                                 " -u " (number->string udp-port)))
+     (process
+      (string-append
+       (path->string
+        SCSYNTH-PATH-MAC)
+       args))]
+    ['unix
+     (define args (string-append " -a 1024 -m 131071 -D 0 -R 0 -l 1 -i 16 -o 16"
+                                 " -u " (number->string udp-port)))
+     (process (string-append "scsynth" args))]
     ;boot_and_wait(scsynth_path, "-u", @port.to_s, "-a", num_audio_busses_for_current_os.to_s,
     ;"-m", "131072", "-D", "0", "-R", "0", "-l", "1", "-i", "16", "-o", "16", "-b", num_buffers_for_current_os.to_s,
     ;"-U", "#{native_path}/plugins/", "-B", "127.0.0.1")
     ['windows
-     ;; find the SuperCollider folder in C:\\Program Files   
-     (define SCSYNTH-PROG-PATH (filter (λ (p)
-                                         (string-contains?
-                                          (path->string (file-name-from-path p))
-                                          "SuperCollider"))
-                                       (directory-list "C:\\Program Files")))
-     (when (empty? SCSYNTH-PROG-PATH) (error 'startup "Could not find SuperCollider. Is it installed to C:\\Program Files?"))
-     (define SCSYNTH-PATH-WIN (build-path (path->complete-path (first SCSYNTH-PROG-PATH)
-                                                               "C:\\Program Files")
-                                          "scsynth.exe"))
-     (process* SCSYNTH-PATH-WIN
-                        "-u" (number->string udp-port)
-                        "-m" "131071"
-                        "-D" "0"
-                        "-R" "0"
-                        "-l" "1"
-                        "-i" "16"
-                        "-o" "16"
-                        "-B" "127.0.0.1")]
+     (define args (string-append " -u " (number->string udp-port)
+                                 " -a 1024 -m 131072 -D 0 -R 0"
+                                 " -l 1 -i 16 -o 16 -b 4096 -B 127.0.0.1"
+                                 " -U " (path->string (build-path here "native" "plugins"))))
+                                 
+     (process (string-append
+               (path->string
+                SCSYNTH-PATH-WIN)
+               args))]
     [else (error 'startup "I don't recognize your operating system")]))
 
 ;; start the scsynth server:

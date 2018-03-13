@@ -22,24 +22,22 @@
         (inherit register-toolbar-button
 		 register-toolbar-buttons)
         ;; receives info log messages on current-logger with topic "lsonic"
-        (define receiver (make-log-receiver
-                          (current-logger)
-                          'info
-                          'lsonic))
+        (define logger (make-logger 'lsonic
+                                    (current-logger)))
 
         (let [(play-btn
                (new switchable-button%
                     (label "Play")
                     (callback (λ (button)
                                 (update-user-score (get-definitions-text)
-                                                   receiver)))
+                                                   logger)))
                     (parent (get-button-panel))
                     (bitmap icon-play)))
               (stop-btn
                (new switchable-button%
                     (label "Stop")
                     (callback (λ (button)
-                                (send-stop receiver)))
+                                (send-stop logger)))
                     (parent (get-button-panel))
                     (bitmap icon-stop)))]
 	  (register-toolbar-buttons (list play-btn stop-btn))
@@ -67,39 +65,24 @@
         (send bdc set-bitmap #f)
         bmp))
 
-    (define main-thread #f)
-    ;; get's the thread descriptor for the main thread
-    (define (get-main-thread receiver)
-      (if (and main-thread (not (thread-dead? main-thread)))
-          main-thread
-          (begin
-            (match (sync/timeout 3 receiver)
-              [(vector info msg value lsonic) (set! main-thread value)]
-              [#f (error 'get-main-thread "timeout getting main thread. did you press run first?")])
-            main-thread)))
-
-    ;; sends the main thread a new user score
-    (define (update-user-score text receiver)
+    ;; logs the new user score to be run
+    (define (update-user-score text logger)
       (define uscore (string-append "(list "
                                     (filter-definitions (send text get-text))
                                     ")"))
-      #;(current-output-port (open-output-file (build-path "Documents" "soniclog.txt")
-                                             #:exists 'append))
-      #;(printf "updating user score with\n\t~v\n" uscore)
-      (thread-send (get-main-thread receiver)
+      (log-message logger
+                   'info
+                   'lsonic
+                   "new-score"
                    uscore))
-    ;; sends the main thread a 'stop signal. if the thread is not to be
-    ;; found, it still tries to stop scsynth in case of error
-    (define (send-stop receiver)
-      (with-handlers
-          ([exn:fail? (lambda (exn)
-                        (printf "ending job due to error...\n")
-                        (shutdown-scsynth)
-                        (error 'send-stop "unable to find thread. attempting to shut down scsynth"))])
-        
-        (thread-send (get-main-thread receiver)
-                     'stop)
-        (set! main-thread #f)))
+    
+    ;; logs the stop message
+    (define (send-stop logger)
+      (log-message logger
+                   'info
+                   'lsonic
+                   "stop"
+                   'stop))
 
     (define (phase1) (void))
     (define (phase2) (void))

@@ -8,6 +8,7 @@
 
 (require racket/contract
          racket/match
+         racket/list
          racket/udp
          racket/async-channel
          racket/system
@@ -27,8 +28,10 @@
                [shutdown-scsynth (-> void)]
                [query-buffer (-> comm? number? any/c)]
                [wait-for-buffer (-> comm? void?)]
+               [get-ended-nodes (-> (listof osc-value?))]
                )
- comm?)
+ comm?
+ comm-incoming)
 
 ;; a comm structure represents information necessary to communicate
 ;; with scsynth at the OSC level; a UDP socket, and an async-channel
@@ -105,6 +108,10 @@
   (process "jack_connect SuperCollider:in_1 system_capture_1")
   (process "jack_connect SuperCollider:in_2 system_capture_2"))
 
+(define ended-nodes '())
+
+(define (get-ended-nodes)
+  ended-nodes)
 
 ;; start a thread that just reads incoming messages and stores
 ;; them in a queue.
@@ -121,6 +128,10 @@
        ;(printf "received buffer: ~v\n" received)
        (define decoded (bytes->osc-element received))
        ;(printf "decoded: ~e\n" decoded)
+       (match decoded
+         [(struct osc-message (#"/n_end" vals))
+           (set! ended-nodes (cons (first vals) ended-nodes))]
+         [other (void)])
        (flatten-into-queue incoming-messages decoded)
        (loop)))))
 
@@ -136,6 +147,8 @@
      (log-scsynth-warning "unexpected bundle in response from scsynth")
      (for-each flatten-into-queue elements)]
     [(? osc-message? msg)
+     ;; we need to keep track of all nodes that have ended so that
+     ;; scsynth-abstraction can tell when every node has ended.
      (async-channel-put incoming-messages msg)]))
 
 ;; given an address and args, assemble a message

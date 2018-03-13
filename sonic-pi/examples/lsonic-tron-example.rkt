@@ -2,11 +2,11 @@
 
 (loop 4
       (block
-       (fx "slicer" "phase" 0.25
+       (fx 'slicer
            (block
-            (fx "reverb" "room" 0.5 "mix" 0.3
+            (fx 'reverb 
                 (block
-                 (control (choose-list (chord "dsaw"
+                 (control (choose-list (chord 'dsaw
                                               (choose "b1" "b2" "e1" "e2" "b3" "e3")
                                               "minor"))
                           "release" 8
@@ -15,7 +15,7 @@
                           "cutoff_slide" 4
                           "detune" (rrand 0 0.2)
                           "pan" (rrand -1 0))
-                 (control (choose-list (chord "dsaw"
+                 (control (choose-list (chord 'dsaw
                                               (choose "b1" "b2" "e1" "e2" "b3" "e3")
                                               "minor"))
                           "release" 8
@@ -24,5 +24,7 @@
                           "cutoff_slide" 4
                           "detune" (rrand 0 0.2)
                           "pan" (rrand 0 1))
-                 (psleep 8)))))))
+                 (psleep 8))
+                "room" 0.5 "mix" 0.3))
+           "phase" 0.25)))
 

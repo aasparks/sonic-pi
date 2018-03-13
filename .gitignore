@@ -1,3 +1,7 @@
 *~
 compiled/
 .DS_Store
+*.dep
+*.zo
+*.bak
+*.rkt~

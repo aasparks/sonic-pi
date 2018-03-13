@@ -57,17 +57,17 @@
 
 
 (module+ test
-  (require "../sample.rkt")
+  (require "../data-structures/sample.rkt")
   (require rackunit)
   (define ctxt (startup))
   (define job-ctxt (start-job ctxt))
-  (define b-infos (load-samples job-ctxt (list (sample-path (sample "ambi_choir"))
-                               (sample-path (sample "bd_tek")))))
+  (define b-infos (load-samples job-ctxt (list (sample-path (sample 'ambi_choir))
+                               (sample-path (sample 'bd_tek)))))
   ;; because sample-loaded? returns the b-info I had to get that manually
-  (check-equal? (sample-loaded? (sample-path (sample "ambi_choir")))
+  (check-equal? (sample-loaded? (sample-path (sample 'ambi_choir)))
                 (first b-infos))
-  (check-equal? (sample-loaded? (sample-path (sample "bd_tek")))
+  (check-equal? (sample-loaded? (sample-path (sample 'bd_tek)))
                 (second b-infos))
-  (check-false (sample-loaded? (sample-path (sample "cnoise"))))
+  (check-false (sample-loaded? (sample-path (sample 'cnoise))))
   (sleep 5)
   (end-job job-ctxt))

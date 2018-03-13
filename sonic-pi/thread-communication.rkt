@@ -30,3 +30,9 @@
 ;; all threads are dead
 (define (all-threads-dead?)
   (andmap thread-dead? (hash-values thread-buffer)))
+
+;; create a new thread-id for the unnamed threads
+(define t-id (box 0))
+(define (fresh-thread-id)
+  (set-box! t-id (add1 (unbox t-id)))
+  (unbox t-id))
