@@ -34,4 +34,10 @@ running the file(s) in the `examples` subdirectory.
 * Added an example using the lsonic library.
 * SuperCollider no longer needs to be pre-installed on Windows.
 * New synth definitions courtesy of Sonic Pi
-* May no longer work on Linux or Mac (not sure).
+* May no longer work on Mac (not sure).
+
+#### 2019-07-19
+
+* Added the compiled synthdefs (how did they get lost?)
+* Realized I never commited some important things and now they're gone (kill me)
+
