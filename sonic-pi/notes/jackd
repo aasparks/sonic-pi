@@ -1,0 +1,12 @@
+On Linux: Must have jackd installed. Run jackd and check for errors.
+
+Realtime Error:
+	To enable realtime on a system, follow these steps:
+		1. vim /etc/security/limits.conf
+			a. @realtime    -    rtprio    99
+			b. @realtime    -    memlock   unlimited
+		2. groupadd realtime
+		3. usermod -a -G realtime $(whoami) (type in manually)
+		4. logout
+	   OR
+		1. sudo adduser austin audio
