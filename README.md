@@ -41,3 +41,12 @@ running the file(s) in the `examples` subdirectory.
 * Added the compiled synthdefs (how did they get lost?)
 * Realized I never commited some important things and now they're gone (kill me)
 
+### TODOs
+
+* Populate synth,fx, and sample information in JSON
+* Provide synth/sample/fx functions to get information about them or list them
+* Rewrite ALL files in typed/racket/base
+* Make note midi-pitch optional
+* Look into making this a REPL language rather than just s-exp lang
+* Consider restructuring again
+* Remake example application

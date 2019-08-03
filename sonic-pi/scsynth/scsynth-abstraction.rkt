@@ -16,8 +16,7 @@
          (for-syntax syntax/parse)
          osc
          racket/runtime-path
-         racket/async-channel
-         )
+         racket/async-channel)
 
 (provide (contract-out
           [startup (-> ctxt?)]
